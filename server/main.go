@@ -1,29 +1,38 @@
 package main
 
 import (
+	"context"
 	"html/template"
-	"io"
-	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"login-checker/server/model"
+	"login-checker/server/session"
+	"login-checker/server/setting"
 
 	"github.com/labstack/echo"
 	"github.com/labstack/echo/middleware"
+	"github.com/labstack/gommon/log"
 )
 
 // レイアウト適用済のテンプレートを保存するmap
 var templates map[string]*template.Template
 
-// TemplateはHTMLテンプレートを利用するためのRenderer Interface
-type Template struct {
-}
+// セッション管理のインスタンス
+var sessionManager *session.Manager
 
-// RenderはHTMLテンプレートにデータを埋め込んだ結果をWriterに書き込む
-func (t *Template) Render(w io.Writer, name string, data interface{}, c echo.Context) error {
-	return templates[name].ExecuteTemplate(w, "layout.html", data)
-}
+// データアクセサのインスタンス
+var userDA *model.UserDataAccessor
 
 func main() {
 	// Echoのインスタンスを生成
 	e := echo.New()
+
+	// ログの出力レベルを設定
+	//	e.Logger.SetLevel(log.INFO)
+	e.Logger.SetLevel(log.DEBUG)
 
 	// テンプレートを利用するためのRendererの設定
 	t := &Template{}
@@ -33,38 +42,53 @@ func main() {
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 
-	// 静的ファイルのパスを設定
-	e.Static("/public/css/", "./public/css")
-	e.Static("/public/js/", "./public/js/")
-	e.Static("/public/img/", "./public/img/")
+	// 静的ファイルを配置するルーティングを設定
+	setStaticRoute(e)
 
 	// 各ルーティングに対するハンドラを設定
-	e.GET("/", HandleIndexGet)
-	e.GET("/api/hello", HandleAPIHelloGet)
+	setRoute(e)
+
+	// セッション管理を開始
+	sessionManager = &session.Manager{}
+	sessionManager.Start(e)
+
+	// データアクセサの開始
+	userDA = &model.UserDataAccessor{}
+	userDA.Start(e)
 
 	// サーバーを開始
-	e.Logger.Fatal(e.Start(":3000"))
+	go func() {
+		if err := e.Start(setting.Server.Port); err != nil {
+			e.Logger.Info("shutting down the server")
+		}
+	}()
+
+	// 中断を検知したらリクエストの完了を10秒まで待ってサーバーを終了
+	// (Graceful Shutdown)
+	quit := make(chan os.Signal)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := e.Shutdown(ctx); err != nil {
+		e.Logger.Info(err)
+		e.Close()
+	}
+
+	// データアクセサの停止
+	userDA.Stop()
+
+	// セッション管理を停止
+	sessionManager.Stop()
+
+	// 終了ログが出るまで少し待つ
+	time.Sleep(1 * time.Second)
 }
 
-// 初期化を行います。
+// 初期化を行う
 func init() {
+	// 設定の読み込み
+	setting.Load()
+	// HTMLテンプレートの読み込み
 	loadTemplates()
-}
-
-// 各HTMLテンプレートに共通レイアウトを適用した結果を保存します（初期化時に実行）。
-func loadTemplates() {
-	var baseTemplate = "../client/templates/layout.html"
-	templates = make(map[string]*template.Template)
-	templates["index"] = template.Must(
-		template.ParseFiles(baseTemplate, "../client/templates/hello.html"))
-}
-
-// HandleIndexGetはIndexのGet時のHTMLデータ生成処理を行います。
-func HandleIndexGet(c echo.Context) error {
-	return c.Render(http.StatusOK, "index", "World")
-}
-
-// HandleAPIHelloGetは /api/hello のGet時のJSONデータ生成処理を行います。
-func HandleAPIHelloGet(c echo.Context) error {
-	return c.JSON(http.StatusOK, map[string]interface{}{"hello": "world"})
 }

@@ -1,0 +1,30 @@
+[
+    {
+        "id": "806d5832-e253-40ca-be80-a00878898c37",
+        "user_id": "a-chan",
+        "password": "5f4dcc3b5aa765d61d8327deb882cf99",
+        "full_name": "Nishiwaki Ayaka",
+        "roles": [
+            "user"
+        ]
+    },
+    {
+        "id": "e7bdce91-c9bb-4a29-91f8-750ad4b18bfa",
+        "user_id": "kne7",
+        "password": "b59c67bf196a4758191e42f76670ceba",
+        "full_name": "Kenta Nanao",
+        "roles": [
+            "user"
+        ]
+    },
+    {
+        "id": "c7a70e10-0c89-48ab-9b30-43fad782cbe4",
+        "user_id": "admin",
+        "password": "b59c67bf196a4758191e42f76670ceba",
+        "full_name": "Administrator",
+        "roles": [
+            "user",
+            "admin"
+        ]
+    }
+]
